@@ -1,0 +1,116 @@
+================================================================================
+                    AI-SIEM GUARDIAN — SETUP GUIDE
+================================================================================
+
+This document contains step-by-step instructions for installing all required tools,
+downloading dependencies, and running the AI-SIEM Guardian platform locally 
+on your machine (without Docker).
+
+--------------------------------------------------------------------------------
+1. REQUIRED TOOLS & DOWNLOADS
+--------------------------------------------------------------------------------
+
+You must install the following software before proceeding:
+
+1. Python 3.11 (use this version for the backend dependency set; Python 3.14 is not supported by the current scikit-learn pin)
+   - Download: https://www.python.org/downloads/
+   - Important: During installation on Windows, ensure you check the box that says 
+     "Add Python XYZ to PATH".
+
+2. Node.js 20.19+ or 22.12+ (required by Vite 8)
+   - Download: https://nodejs.org/
+   - This includes "npm", which is required to run the frontend dashboard.
+
+3. (Optional but recommended) Npcap for Windows 
+   - Download: https://npcap.com/#download
+   - Why: The system includes a network traffic analyzer powered by "Scapy". 
+     On Windows, Scapy requires Npcap to capture real Wi-Fi/Ethernet packets.
+   - If you skip this, the system will automatically fall back to "Simulation Mode"
+     and generate fake network traffic for testing.
+
+--------------------------------------------------------------------------------
+2. SETTING UP THE BACKEND (Terminal 1)
+--------------------------------------------------------------------------------
+
+The backend handles APIs, Database, AI Anomaly Detection, and WebSockets.
+
+1. Open a terminal (Command Prompt or PowerShell).
+2. From the project root, navigate to the backend directory:
+   cd backend
+3. (Optional) Create and activate a virtual environment:
+   python -m venv venv
+   venv\Scripts\activate      (Windows)
+   source venv/bin/activate   (Mac/Linux)
+4. Install all Python dependencies:
+   pip install -r requirements.txt
+5. Create backend\.env with the required secrets (never commit this file):
+   For local SQLite development, set `DATABASE_URL=sqlite:///./siem_guardian.db`.
+   The copied `.env.example` contains a PostgreSQL example URL; do not leave that value
+   in place unless you have started PostgreSQL and configured its credentials.
+     JWT_SECRET_KEY   -> python -c "import secrets; print(secrets.token_urlsafe(32))"
+     AGENT_API_KEY    -> python -c "import secrets; print(secrets.token_urlsafe(32))"
+     DB_ENCRYPTION_KEY-> python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   The backend refuses to start if DB_ENCRYPTION_KEY is missing or invalid.
+   Keep the same DB_ENCRYPTION_KEY: stored database credentials cannot be
+   decrypted with a different key. See .env.example for all settings.
+6. Start the FastAPI server:
+   uvicorn main:app --reload --port 8000
+
+If successful, you will see output like "Skylos starting up"
+and "Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)".
+
+--------------------------------------------------------------------------------
+3. SETTING UP THE FRONTEND DASHBOARD (Terminal 2)
+--------------------------------------------------------------------------------
+
+The frontend is a React application styled with TailwindCSS.
+
+1. Open a NEW terminal window.
+2. From the project root, navigate to the frontend directory:
+   cd frontend
+3. Install the locked Node.js dependencies:
+   npm ci
+4. Start the development server:
+   npm run dev
+
+When running, it will provide a link, typically "http://localhost:5173/".
+Open this link in your web browser.
+Login Credentials:
+There is no default account. Before the first login, create the administrator
+from the backend directory:
+   python manage.py create-admin --username <name> --email <email>
+(You will be prompted for a password: 8+ chars, upper, lower and a digit.)
+Agent scripts load `AGENT_API_KEY` from `backend/.env` automatically when started from
+the backend directory. They generate simulated telemetry; they do not read real OS logs.
+
+--------------------------------------------------------------------------------
+4. RUNNING THE DATA AGENTS (Terminal 3 & 4)
+--------------------------------------------------------------------------------
+
+Data agents continuously run in the background to provide live logs and network
+data to the platform. 
+
+Start the System Log Agent (Terminal 3):
+1. Open a NEW terminal window.
+2. From the project root, navigate to the backend directory:
+   cd backend
+3. Run the script:
+   python agent\system_log_agent.py
+
+Start the Network Agent (Terminal 4):
+1. Open a NEW terminal window.
+2. From the project root, navigate to the backend directory:
+   cd backend
+3. Run the script:
+   python agent\network_agent.py
+
+--------------------------------------------------------------------------------
+5. TESTING THE SYSTEM
+--------------------------------------------------------------------------------
+
+1. With all 4 terminals running, open the dashboard in your browser.
+2. Go to the "Threat Alerts" page.
+3. Click the red "🔫 Simulate Attack" button in the top right.
+4. Watch the top right corner of the screen for incoming real-time alert toasts.
+5. Navigate back to the "Dashboard" home page to see the Incident Timeline
+   update live with the simulated attack data.

@@ -1,0 +1,143 @@
+# ═══════════════════════════════════════════════════════════════
+# Skylos (legacy: AI-SIEM Guardian) — Docker Compose Configuration
+# ═══════════════════════════════════════════════════════════════
+#
+# SECURITY INSTRUCTIONS:
+# 1. Copy .env.example to .env and configure all secrets
+# 2. NEVER use default passwords in production
+# 3. Use Docker secrets for production deployments
+# 4. Ensure .env is in .gitignore (it is by default)
+#
+# Usage:
+#   docker compose up --build -d
+#   Synthetic Database Guardian test target (optional):
+#     docker compose --profile guardian-test up -d postgres-test
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-siem_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file}
+      POSTGRES_DB: ${POSTGRES_DB:-siem_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Bound to localhost only; the backend reaches it over the compose network.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siem_user} -d ${POSTGRES_DB:-siem_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - siem_network
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-siem_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-siem_db}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env file}
+      - JWT_EXPIRATION_MINUTES=${JWT_EXPIRATION_MINUTES:-60}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:80}
+      - DEBUG=${DEBUG:-false}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-120}
+      - LOGIN_RATE_LIMIT_PER_MINUTE=${LOGIN_RATE_LIMIT_PER_MINUTE:-5}
+      - ANOMALY_CONTAMINATION=${ANOMALY_CONTAMINATION:-0.1}
+      - MIN_TRAINING_SAMPLES=${MIN_TRAINING_SAMPLES:-20}
+      - AGENT_API_KEY=${AGENT_API_KEY:?AGENT_API_KEY must be set in .env file}
+      - SECRET_PROVIDER=${SECRET_PROVIDER:-fernet}
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY:?DB_ENCRYPTION_KEY must be set in .env file}
+      # First-run administrator (only used while no administrator exists)
+      - SKYLOS_BOOTSTRAP_ADMIN_USERNAME=${SKYLOS_BOOTSTRAP_ADMIN_USERNAME:-}
+      - SKYLOS_BOOTSTRAP_ADMIN_EMAIL=${SKYLOS_BOOTSTRAP_ADMIN_EMAIL:-}
+      - SKYLOS_BOOTSTRAP_ADMIN_PASSWORD=${SKYLOS_BOOTSTRAP_ADMIN_PASSWORD:-}
+      - SMTP_SERVER=${SMTP_SERVER:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - siem_network
+    healthcheck:
+      # python:3.11-slim has no curl; use the interpreter that is already there
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - siem_network
+
+  log_agent:
+    build:
+      context: ./backend
+    command: ["python", "agent/system_log_agent.py"]
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - AGENT_API_KEY=${AGENT_API_KEY:?AGENT_API_KEY must be set in .env file}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - siem_network
+
+  network_agent:
+    build:
+      context: ./backend
+    command: ["python", "agent/network_agent.py"]
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - AGENT_API_KEY=${AGENT_API_KEY:?AGENT_API_KEY must be set in .env file}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - siem_network
+
+  # Synthetic PostgreSQL target for Database Guardian testing. Never point
+  # automated tests at a real company database. Only started with
+  # `--profile guardian-test`; refuses to start without a password.
+  postgres-test:
+    image: postgres:14
+    profiles: ["guardian-test"]
+    environment:
+      POSTGRES_DB: ${GUARDIAN_TEST_DB_NAME:-test_company_db}
+      POSTGRES_USER: ${GUARDIAN_TEST_DB_USER:-monitor_user}
+      POSTGRES_PASSWORD: ${GUARDIAN_TEST_DB_PASSWORD:-}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    networks:
+      - siem_network
+
+volumes:
+  postgres_data:
+    driver: local
+  postgres-test-data:
+    driver: local
+
+networks:
+  siem_network:
+    driver: bridge

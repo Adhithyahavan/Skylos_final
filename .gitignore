@@ -1,0 +1,163 @@
+# ═══════════════════════════════════════════════════════════════
+# AI-SIEM Guardian — Git Ignore
+# ═══════════════════════════════════════════════════════════════
+
+# ── Environment & Secrets ────────────────────────────────────────
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+secrets.toml
+secrets/
+
+# ── Python ──────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ── Virtual Environments ────────────────────────────────────────
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+backend/venv/
+.venv/
+backend/.venv/
+
+# ── IDEs & Editors ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ── Databases ────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+siem_guardian.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# ── Logs ────────────────────────────────────────────────────────
+*.log
+logs/
+backend/agent/logs_cache.json
+*.log.*
+
+# ── Node / Frontend ─────────────────────────────────────────────
+node_modules/
+.npm
+.yarn/
+.pnp.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# ── Testing ─────────────────────────────────────────────────────
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+htmlcov/
+
+# ── Docker ──────────────────────────────────────────────────────
+*.pid
+postgres_data/
+
+# ── Temporary Files ─────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+
+# ── Build Artifacts ─────────────────────────────────────────────
+*.exe
+*.msi
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
+
+# ── OS Generated ────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Jupyter Notebooks ───────────────────────────────────────────
+.ipynb_checkpoints
+
+# ── Documentation ───────────────────────────────────────────────
+docs/_build/
+
+# ── Pyenv ───────────────────────────────────────────────────────
+.python-version
+
+# ── Celery ──────────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat.pid
+
+# ── SageMath ────────────────────────────────────────────────────
+*.sage.py
+
+# ── ML Models ───────────────────────────────────────────────────
+*.pkl
+*.joblib
+*.h5
+*.model
+
+# ── Backup Files ────────────────────────────────────────────────
+*.sql.gz
+*.tar.gz
+backups/

@@ -1,0 +1,13 @@
+# Keep secrets, local databases and local environments out of the image
+.env
+.env.*
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+agent/logs_cache.json
+logs/

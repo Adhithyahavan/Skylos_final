@@ -1,0 +1,27 @@
+# Skylos (legacy: AI-SIEM Guardian) — Backend Dependencies
+# Pins target Python 3.11 (the Docker base image). Older pins (numpy<1.22,
+# scikit-learn<1.1) had no Python 3.11 wheels and could not be installed.
+fastapi>=0.100,<0.104.0
+uvicorn[standard]>=0.22,<0.23.0
+sqlalchemy>=2.0,<2.1.0
+# Schema migrations (run automatically at startup; see migrations/)
+alembic>=1.16,<2.0
+psycopg2-binary>=2.9,<3.0
+python-dotenv>=1.0,<2.0
+python-jose[cryptography]>=3.3,<4.0
+passlib[bcrypt]>=1.7.4,<1.8
+# passlib 1.7.4 is incompatible with bcrypt>=4.1 (removed __about__, 72-byte check)
+bcrypt==4.0.1
+python-multipart>=0.0.6
+pydantic>=2.4,<2.6.0
+scikit-learn>=1.3,<1.6
+numpy>=1.24,<2.0
+scapy>=2.5,<3.0
+websockets>=11.0,<12.0
+aiosmtplib>=2.0,<4.0
+slowapi>=0.1.9,<0.2
+# pydantic v2 EmailStr requires email-validator 2.x
+email-validator>=2.0,<3.0
+requests>=2.31,<3.0
+urllib3>=1.26,<2.0
+cryptography>=41.0.0

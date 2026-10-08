@@ -1,0 +1,5 @@
+# Skylos — test/development dependencies (not installed in the runtime image)
+-r requirements.txt
+pytest>=7.4,<9.0
+pytest-asyncio>=0.21,<0.24
+httpx>=0.24,<0.28
