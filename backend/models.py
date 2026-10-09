@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from database import Base
 import enum
+import json
 
 
 class UserRole(str, enum.Enum):
@@ -101,6 +102,16 @@ class DatabaseAsset(Base):
     metadata_json = Column(Text, nullable=True)  # JSON: version, size, etc.
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+    @property
+    def maintenance_windows(self):
+        """Configured maintenance windows (ISO strings), from metadata_json."""
+        try:
+            windows = json.loads(self.metadata_json or "{}").get("maintenance_windows", [])
+        except (ValueError, AttributeError):
+            return []
+        return windows if isinstance(windows, list) else []
 
 
 class DatabaseHealthCheck(Base):
@@ -233,6 +244,19 @@ class DatabaseAlert(Base):
     acknowledged = Column(Boolean, default=False)
     acknowledged_by = Column(Integer, nullable=True)  # FK to User
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class DatabaseRiskSnapshot(Base):
+    """Stored risk score with its explanation (rule contributions and event references)."""
+    __tablename__ = "database_risk_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    database_id = Column(Integer, nullable=False, index=True)
+    calculated_at = Column(DateTime, nullable=False, index=True)
+    total_score = Column(Integer, nullable=False)
+    severity = Column(String(20), nullable=False)  # low, medium, high, critical
+    contributions_json = Column(Text, nullable=False)  # per-rule points, reasons, timestamps, event refs
+    scoring_version = Column(String(10), nullable=False)
 
 
 class DatabaseAccessPattern(Base):

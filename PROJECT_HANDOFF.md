@@ -1,5 +1,46 @@
 # Skylos — Session Handoff
 
+## Session: 2026-10-09 — Baseline, explainable Database Guardian risk scoring, example-secret fix
+
+### Baseline (before changes)
+Branch `claude/loving-bardeen-rs2ryg`, clean tree. Backend (Python 3.11 venv outside the repo): 174 passed. Frontend (Node 22.22.0): `npm ci` and `npm run build` succeeded. Docker daemon not used; Compose and PostgreSQL still unverified.
+
+### What changed
+- **Risk scoring now follows the specification** (`backend/database_guardian/risk_scorer.py`, rewritten; `RISK_WEIGHTS` and `calculate_database_risk_score` kept for compatibility). Pure `score_signals` applies: duplicate prevention, maintenance windows, +40 per category per 30 minutes, +15 correlation, severity bands. Failed logins are grouped into 10-minute bursts. The total is no longer capped at 100.
+- **New table `database_risk_snapshots`** (migration `0003`, additive). A snapshot stores score, severity, per-rule contributions, reasons, timestamps and event references; it is written only when the result changes.
+- **API (additive):** `GET /api/databases/{id}/risk-score` now returns `severity`, `contributions`, `scoring_version`; new `GET /api/databases/{id}/risk-history`; `PATCH /api/databases/{id}` accepts admin-only, validated, audited `maintenance_windows` (stored inside `metadata_json`, so no extra table).
+- **Bug fixes:** `health_monitor` used a bare `from risk_scorer import` that raised on every successful check and marked the database offline. `alert_generator` gave nearly every alert type weight 5; it now uses the specification weight and suppresses duplicate unacknowledged alerts for 30 minutes. `login_monitor` used a 60-second window; it now uses 10 minutes.
+- **Security:** `.env.example` contained a valid Fernet `DB_ENCRYPTION_KEY` in a public repository. Replaced with a non-working placeholder and added `tests/test_repo_hygiene.py`. **Treat the old key as public**: it is still in git history (not rewritten) and must never protect real credentials. `.gitignore` now ignores `.venv*/`.
+- **Frontend:** Database Guardian page shows severity and "why this score".
+- **Docs:** new `RUNNING_SKYLOS.md`; `PROJECT_PROGRESS.md` updated.
+
+### Files changed
+Backend: `database_guardian/{risk_scorer,alert_generator,health_monitor,login_monitor}.py`, `models.py`, `schemas.py`, `api_routes.py`, new `migrations/versions/0003_database_risk_snapshots.py`.
+Tests: new `tests/test_database_risk.py` (103), `tests/test_repo_hygiene.py` (7), `tests/test_migrations.py` (+2).
+Other: `frontend/src/pages/Databases.tsx`, `.env.example`, `.gitignore`, `RUNNING_SKYLOS.md`, `PROJECT_PROGRESS.md`, `PROJECT_HANDOFF.md`.
+
+### Migrations / dependencies
+Migration `0003` (head). No new dependencies.
+
+### Verification (actually run)
+- `python -m pytest`: **286 passed, 0 failed** (baseline 174; +112 new tests).
+- Real run: a synthetic SQLite target registered through the encrypted-credential provider, one unacknowledged audit-disabled alert, `run_health_checks` → asset `online`, `risk_score` 40, one stored snapshot, database at migration `0003`.
+- Real server: `uvicorn` on a scratch SQLite database, `manage.py create-admin`, login, `GET /api/databases/` 200 with token and 401 without, `GET /api/health` healthy.
+- `npm run build` succeeded after the UI change.
+
+### Not verified / limitations
+- Docker Compose, PostgreSQL (including migration `0003` and the monitors), Windows and Tauri were not run.
+- No approval workflow: all admin/privilege/schema/export events count as unapproved. `out_of_hours` and `unknown_ip` rules exist but nothing emits them yet.
+- Real PostgreSQL failed-login telemetry does not exist, so brute-force scoring is exercised only by synthetic events.
+- `backend/.venv310/` is still tracked in git; `git rm -r --cached backend/.venv310` was not run.
+- Unchanged open items: per-agent identity, incidents, evidence model, token revocation, simulated-data flag, Isolation Forest auto-retraining on untrusted telemetry, Tauri client.
+
+### Result
+PARTIAL: the scoring slice is implemented and verified at test and SQLite level; the wider master-prompt scope is far from complete.
+
+
+---
+
 ## Session: 2026-10-05 — Restore and wire core project flows
 
 ### What changed
@@ -154,7 +195,7 @@ Modified: `backend/database.py`, `backend/requirements.txt` (`alembic>=1.16,<2.0
 ### Blockers
 Unchanged: Node.js, Docker daemon and Rust are absent (environment only).
 
-Next action: superseded by session 3.
+(Superseded by later sessions.)
 
 ---
 
@@ -226,6 +267,4 @@ These are environment blockers, not code blockers.
 
 (Superseded by the session above.)
 
----
-
-**Next action: `Define the canonical SecurityEvent model: add a security_events table (event_id, event_type, timestamp, ingestion_timestamp, source_type, source_id, asset_id, device_id, actor, actor_type, source_address, destination_address, action, object_type, object_name, outcome, severity_hint, raw_event_reference, attributes JSON, correlation_key) via Alembic migration 0002, add a normalizer that converts agent log ingestion (POST /api/logs/ingest[/batch]) into SecurityEvent rows alongside the existing Log rows without changing the API contract, and add tests (migration, normalization, malformed input, ingestion end-to-end).`**
+Next action: Implement per-agent identity — an `agents` table (migration 0004) with registration, admin approval/rejection/revocation, hashed per-agent credentials, and `X-Agent-Id` + credential verification on `/api/logs/ingest*` and `/api/network/capture` (keeping the shared `AGENT_API_KEY` only as an explicit opt-in registration secret), with tests for unknown, unapproved and revoked agents.

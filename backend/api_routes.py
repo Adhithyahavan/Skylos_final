@@ -3,6 +3,7 @@ AI-SIEM Guardian — API Routes
 REST endpoints for logs, alerts, network activity, dashboard stats, auth, and attack simulation.
 """
 
+import json
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 
@@ -13,7 +14,10 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from database import get_db
-from models import User, Log, Alert, NetworkActivity, AuditLog, DatabaseAsset, DatabaseAlert, SecurityEvent
+from models import (
+    User, Log, Alert, NetworkActivity, AuditLog, DatabaseAsset, DatabaseAlert,
+    DatabaseRiskSnapshot, SecurityEvent,
+)
 from schemas import (
     UserCreate, UserLogin, UserOut, Token,
     LogCreate, LogOut,
@@ -22,7 +26,7 @@ from schemas import (
     DashboardStats, TimelineEvent,
     DatabaseAssetCreate, DatabaseAssetUpdate, DatabaseAssetOut,
     DatabaseHealthOut, DatabaseAlertOut,
-    DatabaseActivityStats, DatabaseRiskScoreBreakdown,
+    DatabaseActivityStats, DatabaseRiskScoreBreakdown, DatabaseRiskSnapshotOut,
     SecurityEventOut,
 )
 from auth import (
@@ -625,8 +629,23 @@ def update_database(
     if not db_asset:
         raise HTTPException(status_code=404, detail="Database not found")
     changes = update.model_dump(exclude_unset=True)
+    changes.pop("maintenance_windows", None)
+    windows = update.maintenance_windows or []
+    maintenance_changed = "maintenance_windows" in update.model_fields_set
     for field, value in changes.items():
         setattr(db_asset, field, value)
+    if maintenance_changed:
+        try:
+            metadata = json.loads(db_asset.metadata_json or "{}")
+        except ValueError:
+            metadata = {}
+        metadata["maintenance_windows"] = [
+            {"start": w.start.isoformat(), "end": w.end.isoformat(),
+             "categories": list(w.categories), "multiplier": w.multiplier}
+            for w in windows
+        ]
+        db_asset.metadata_json = json.dumps(metadata)
+        changes["maintenance_windows"] = True
     if changes:
         db.add(AuditLog(
             user_id=current_user.id,
@@ -704,3 +723,29 @@ def get_database_risk_score(
         total_risk_score=risk_breakdown["total_risk_score"],
         **category_scores
     )
+
+
+@database_router.get("/{database_id}/risk-history", response_model=List[DatabaseRiskSnapshotOut])
+def get_database_risk_history(
+    database_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Stored risk snapshots (score, severity, reasons, event references), newest first."""
+    if not db.query(DatabaseAsset.id).filter(DatabaseAsset.id == database_id).first():
+        raise HTTPException(status_code=404, detail="Database not found")
+    snapshots = (
+        db.query(DatabaseRiskSnapshot)
+        .filter(DatabaseRiskSnapshot.database_id == database_id)
+        .order_by(desc(DatabaseRiskSnapshot.id))
+        .offset(skip).limit(limit).all()
+    )
+    return [
+        DatabaseRiskSnapshotOut(
+            id=snap.id, database_id=snap.database_id, calculated_at=snap.calculated_at,
+            total_score=snap.total_score, severity=snap.severity,
+            contributions=json.loads(snap.contributions_json), scoring_version=snap.scoring_version)
+        for snap in snapshots
+    ]

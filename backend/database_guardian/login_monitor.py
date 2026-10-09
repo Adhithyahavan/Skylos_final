@@ -58,12 +58,12 @@ async def run_login_monitoring(db: Session):
 
             connector.close()
 
-            # Check for brute force attacks (failed login attempts in last 60 seconds)
-            one_minute_ago = datetime.now(timezone.utc) - timedelta(seconds=60)
+            # Check for brute force attacks (failed login attempts in the last 10 minutes)
+            window_start = datetime.now(timezone.utc) - timedelta(minutes=10)
             recent_failed_logins = db.query(DatabaseLoginEvent).filter(
                 DatabaseLoginEvent.database_id == asset.id,
                 DatabaseLoginEvent.success == False,
-                DatabaseLoginEvent.timestamp >= one_minute_ago
+                DatabaseLoginEvent.timestamp >= window_start
             ).count()
 
             # Generate alerts based on failed login counts
@@ -74,8 +74,8 @@ async def run_login_monitoring(db: Session):
                     alert_type="db_brute_force",
                     severity="critical",
                     title=f"Brute Force Attack Detected on {asset.name}",
-                    description=f"{recent_failed_logins} failed login attempts in the last minute",
-                    evidence={"failed_logins_count": recent_failed_logins, "time_window": "60 seconds"}
+                    description=f"{recent_failed_logins} failed login attempts in the last 10 minutes",
+                    evidence={"failed_logins_count": recent_failed_logins, "time_window": "10 minutes"}
                 )
                 logger.warning(f"Brute force alert triggered for {asset.name}: {recent_failed_logins} failed logins")
             elif recent_failed_logins >= 5:
@@ -85,8 +85,8 @@ async def run_login_monitoring(db: Session):
                     alert_type="db_brute_force",
                     severity="high",
                     title=f"Multiple Failed Logins on {asset.name}",
-                    description=f"{recent_failed_logins} failed login attempts in the last minute",
-                    evidence={"failed_logins_count": recent_failed_logins, "time_window": "60 seconds"}
+                    description=f"{recent_failed_logins} failed login attempts in the last 10 minutes",
+                    evidence={"failed_logins_count": recent_failed_logins, "time_window": "10 minutes"}
                 )
                 logger.info(f"High severity failed login alert for {asset.name}: {recent_failed_logins} failed logins")
             elif recent_failed_logins >= 3:
@@ -96,8 +96,8 @@ async def run_login_monitoring(db: Session):
                     alert_type="db_brute_force",
                     severity="medium",
                     title=f"Failed Login Attempts on {asset.name}",
-                    description=f"{recent_failed_logins} failed login attempts in the last minute",
-                    evidence={"failed_logins_count": recent_failed_logins, "time_window": "60 seconds"}
+                    description=f"{recent_failed_logins} failed login attempts in the last 10 minutes",
+                    evidence={"failed_logins_count": recent_failed_logins, "time_window": "10 minutes"}
                 )
                 logger.info(f"Medium severity failed login alert for {asset.name}: {recent_failed_logins} failed logins")
 
