@@ -161,7 +161,16 @@ export default function Databases() {
       </section>
 
       {details && <section className="card" style={{ marginTop: '1.5rem' }}>
-        <h3>Database risk and recent alerts</h3><p>Risk score: {details.risk.total_risk_score}</p>
+        <h3>Database risk and recent alerts</h3><p>Risk score: {details.risk.total_risk_score} ({String(details.risk.severity ?? 'low').toUpperCase()})</p>
+        {(details.risk.contributions ?? []).length > 0 && <>
+          <h4>Why this score</h4>
+          <ul>
+            {details.risk.contributions.map((c: any, index: number) => <li key={`${c.rule}-${c.timestamp}-${index}`}>
+              +{c.applied_points} {c.rule.replace(/_/g, ' ')} · {c.reason} · {new Date(c.timestamp).toLocaleString()}
+              {c.status !== 'counted' && ` · ${c.status}${c.note ? ` (${c.note})` : ''}`}
+            </li>)}
+          </ul>
+        </>}
         {details.alerts.length === 0 ? <p>No alerts for this database.</p> : <ul>
           {details.alerts.map((alert: any) => <li key={alert.id}>{alert.severity.toUpperCase()} · {alert.title} · {new Date(alert.timestamp).toLocaleString()}</li>)}
         </ul>}

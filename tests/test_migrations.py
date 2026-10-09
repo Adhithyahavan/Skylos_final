@@ -240,3 +240,32 @@ def test_0002_downgrade_removes_only_security_events(make_engine):
         assert conn.execute(text("SELECT count(*) FROM logs")).scalar() == 1
     run_migrations(eng)
     assert current_revision(eng) == _head() and _schema_diff(eng) == []
+
+
+# ── Migration 0003: database_risk_snapshots ──────────────────────
+
+def test_0003_creates_risk_snapshots_and_preserves_data(make_engine):
+    eng = make_engine()
+    run_migrations(eng, revision="0002")
+    assert "database_risk_snapshots" not in _tables(eng)
+    with eng.begin() as conn:
+        conn.execute(text("INSERT INTO logs (id, ip, event_type) VALUES (3, '10.0.0.5', 'login')"))
+    run_migrations(eng)
+    assert current_revision(eng) == _head()
+    cols = {c["name"] for c in inspect(eng).get_columns("database_risk_snapshots")}
+    assert cols == {"id", "database_id", "calculated_at", "total_score", "severity",
+                    "contributions_json", "scoring_version"}
+    with eng.connect() as conn:
+        assert conn.execute(text("SELECT ip FROM logs WHERE id = 3")).scalar() == "10.0.0.5"
+    assert _schema_diff(eng) == []
+
+
+def test_0003_downgrade_removes_only_risk_snapshots(make_engine):
+    from alembic import command
+    eng = make_engine()
+    run_migrations(eng)
+    _run_alembic(eng, lambda cfg: command.downgrade(cfg, "0002"))
+    assert current_revision(eng) == "0002"
+    assert "database_risk_snapshots" not in _tables(eng) and "security_events" in _tables(eng)
+    run_migrations(eng)
+    assert current_revision(eng) == _head() and _schema_diff(eng) == []

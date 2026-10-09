@@ -3,8 +3,8 @@ AI-SIEM Guardian — Pydantic Schemas
 Request / response validation for all API endpoints.
 """
 
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Any, Dict, Optional
+from pydantic import BaseModel, EmailStr, Field, model_validator, validator
+from typing import Any, Dict, List, Literal, Optional
 from datetime import datetime
 import re
 
@@ -176,9 +176,24 @@ class DatabaseAssetCreate(BaseModel):
     username: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=1, max_length=255)  # Will be encrypted
 
+class MaintenanceWindowConfig(BaseModel):
+    """Approved maintenance period during which listed risk categories are excluded or reduced."""
+    start: datetime
+    end: datetime
+    categories: List[Literal["authentication", "privilege", "schema", "audit", "backup", "data_access", "time_source"]] = \
+        Field(default_factory=lambda: ["schema", "time_source"], min_length=1, max_length=7)
+    multiplier: float = Field(0.0, ge=0.0, le=1.0)  # 0 excludes the points, 0.5 halves them
+
+    @model_validator(mode="after")
+    def _end_after_start(self):
+        if self.end <= self.start:
+            raise ValueError("end must be after start")
+        return self
+
 class DatabaseAssetUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     is_active: Optional[bool] = None
+    maintenance_windows: Optional[List[MaintenanceWindowConfig]] = Field(None, max_length=50)
 
 class DatabaseAssetOut(BaseModel):
     id: int
@@ -192,6 +207,7 @@ class DatabaseAssetOut(BaseModel):
     last_check: Optional[datetime]
     status: str
     risk_score: int
+    maintenance_windows: List[Dict[str, Any]] = []
     created_at: datetime
     updated_at: datetime
 
@@ -246,3 +262,16 @@ class DatabaseRiskScoreBreakdown(BaseModel):
     backup_issues_score: int
     sensitive_access_score: int
     other_score: int
+    severity: str = "low"  # low (0-19), medium (20-39), high (40-69), critical (70+)
+    scoring_version: str = ""
+    contributions: List[Dict[str, Any]] = []
+
+
+class DatabaseRiskSnapshotOut(BaseModel):
+    id: int
+    database_id: int
+    calculated_at: datetime
+    total_score: int
+    severity: str
+    contributions: List[Dict[str, Any]]
+    scoring_version: str

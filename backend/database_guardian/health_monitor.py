@@ -53,7 +53,7 @@ async def run_health_checks(db: Session):
             # Update asset status and last check
             asset.status = "online"
             asset.last_check = datetime.now(timezone.utc)
-            asset.risk_score = calculate_risk_score(db, asset.id)  # We'll need to import or define this
+            asset.risk_score = calculate_risk_score(db, asset.id)
 
             logger.info(f"Health check for {asset.name}: online ({response_time_ms}ms)")
 
@@ -76,8 +76,8 @@ async def run_health_checks(db: Session):
             db.commit()
 
 def calculate_risk_score(db: Session, database_id: int) -> int:
-    """Calculate risk score for a database (temporary implementation)."""
-    # Import here to avoid circular imports
-    from risk_scorer import calculate_database_risk_score
-    result = calculate_database_risk_score(db, database_id)
-    return result["total_risk_score"]
+    """Score a database and store the explained snapshot when it changed."""
+    from .risk_scorer import evaluate_database_risk, record_risk_snapshot
+    result = evaluate_database_risk(db, database_id)
+    record_risk_snapshot(db, database_id, result)
+    return result.total

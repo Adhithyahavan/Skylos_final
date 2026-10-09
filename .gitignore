@@ -51,6 +51,7 @@ venv.bak/
 backend/venv/
 .venv/
 backend/.venv/
+.venv*/
 
 # ── IDEs & Editors ──────────────────────────────────────────────
 .vscode/

@@ -1,7 +1,7 @@
 # Skylos — Project Progress
 
 Legacy name: AI-SIEM Guardian. Statuses: NOT STARTED · IN PROGRESS · PARTIAL · NEEDS TESTING · COMPLETE · BLOCKED.
-Last updated: 2026-10-05 (source restoration and core integration fixes).
+Last updated: 2026-10-09 (audit baseline, explainable Database Guardian risk scoring, example-secret fix).
 
 > The previous version of this file marked several items as done that the code did not support
 > (for example alert deduplication, a migration strategy, and agent authentication beyond one shared
@@ -10,7 +10,17 @@ Last updated: 2026-10-05 (source restoration and core integration fixes).
 
 ---
 
-## Baseline (captured 2026-10-01, before any change this session)
+## Baseline (captured 2026-10-09, before changes)
+
+| Item | Result |
+|---|---|
+| Git | Branch `claude/loving-bardeen-rs2ryg`, clean tree, single commit `6890fda`. |
+| Backend tests | Python 3.11.15 venv outside the repo: **174 passed, 0 failed**. |
+| Frontend | Node 22.22.0: `npm ci` + `npm run build` succeeded. |
+| Docker | CLI 29.8.2 present; daemon not used here, so Compose/PostgreSQL remain **NEEDS TESTING**. |
+| Pre-existing defects found | `health_monitor` imported `risk_scorer` with a bare import, so every successful health check raised `ModuleNotFoundError` and recorded the database as *offline*; `alert_generator` gave almost every alert type a default impact of 5; `.env.example` shipped a valid-format Fernet key; `backend/.venv310/` (Windows virtualenv files) is tracked in git. |
+
+## Baseline (captured 2026-10-01)
 
 | Item | Result |
 |---|---|
@@ -41,7 +51,7 @@ Last updated: 2026-10-05 (source restoration and core integration fixes).
 |---|---|---|---|---|---|
 | Backend starts | FOUNDATION | COMPLETE | Fixed relative imports. Verified with `uvicorn` + Database Guardian monitoring enabled. | `database_guardian/monitoring_service.py` | `test_app_starts_and_health_ok`, `test_database_guardian_monitoring_module_imports` |
 | Python 3.11 dependency set | FOUNDATION | PARTIAL | Installs and runs locally on 3.11. Docker image build NEEDS TESTING. Dev deps split into `requirements-dev.txt`. | `backend/requirements*.txt` | full suite |
-| Secret handling | FOUNDATION | PARTIAL | JWT secret required in production; agent key fail-closed; SQL echo off by default. DB credential key validated at startup, never generated or printed (session 3). `.env.development` contains dev-only secrets. `backend/.env.bak` exists (contents not shown; ignored by git and Docker). | `config.py`, `database.py`, `.env.example` | — |
+| Secret handling | FOUNDATION | PARTIAL | `.env.example` no longer ships a usable `DB_ENCRYPTION_KEY` (it was a valid Fernet key in a public repo: treat it as compromised, never reuse it; it remains in git history, which was not rewritten). JWT secret required in production; agent key fail-closed; SQL echo off by default. DB credential key validated at startup, never generated or printed (session 3). `.env.development` contains dev-only secrets. `backend/.env.bak` exists (contents not shown; ignored by git and Docker). | `config.py`, `database.py`, `.env.example` | — |
 | Administrator initialization | FOUNDATION | PARTIAL | No default admin. `manage.py create-admin` / `reset-password` and env bootstrap (`SKYLOS_BOOTSTRAP_ADMIN_*`), all refused once an admin exists, audited, strength-validated. Legacy `admin123` refused at login. **Missing:** forced password change on first login (schema change; now unblocked by migrations). | `bootstrap.py`, `manage.py`, `main.py`, `auth.py` | bootstrap/CLI tests in `test_api_routes.py` |
 | JWT authentication | FOUNDATION | PARTIAL | Signature, expiry, missing-exp, alg=none, foreign-key, deleted/disabled user covered by tests. **Missing:** iss/aud claims, logout/revocation, token-version on password reset. Tokens live in `localStorage`. | `auth.py` | `test_auth.py`, `test_api_routes.py` |
 | RBAC (admin/analyst/viewer) | FOUNDATION | PARTIAL | Enforced server-side on every existing route and tested per role. **Missing:** user-management endpoints (list/disable/role change), role management. | `api_routes.py`, `auth.py` | `test_api_routes.py` |
@@ -57,7 +67,7 @@ Last updated: 2026-10-05 (source restoration and core integration fixes).
 | Evidence model | FOUNDATION | NOT STARTED | Alerts only carry `log_id`; DB alerts carry inline `evidence_json`. | — | — |
 | Database migrations | FOUNDATION | PARTIAL | Startup runs `upgrade head`. Baseline `0001` adopts compatible legacy schemas; `0002` adds `security_events`. SQLite migration history was verified before `0002`; this session did not rerun migrations. **PostgreSQL NEEDS TESTING**. **Limitation:** no lock against two processes migrating at once. | `backend/alembic.ini`, `backend/migrations/`, `backend/database.py`, `tests/conftest.py` | Existing migration tests not rerun this session |
 | PostgreSQL (Skylos' own DB) | FOUNDATION | NEEDS TESTING | Needs Docker. Command: `docker compose up -d postgres`, then run backend with `DATABASE_URL=postgresql://...`. | — | — |
-| Alert foundation | FOUNDATION | PARTIAL | Alerts are created and broadcast. **No deduplication** (earlier claim incorrect); no explanation fields. | `alert_service.py`, `log_processor.py` | — |
+| Alert foundation | FOUNDATION | PARTIAL | Database alerts are now deduplicated (an unacknowledged alert with the same type, severity, user, source and table within 30 min is not repeated) and carry the specification weight. Agent/log alerts (`alert_service.py`) still have **no deduplication**. | `alert_service.py`, `log_processor.py` | — |
 | Incident foundation | FOUNDATION | NOT STARTED | Only an `acknowledged` boolean. | — | — |
 | Docker baseline | FOUNDATION | NEEDS TESTING | Fixed: invalid `postgres-test` nesting, required `AGENT_API_KEY`, Postgres bound to 127.0.0.1, healthcheck no longer needs curl, `.dockerignore` added, test DB password from env + profile. `docker compose config` validates. **Not built or started** (no daemon). | `docker-compose.yml`, `*/.dockerignore` | `docker compose config -q` |
 
@@ -69,15 +79,15 @@ Last updated: 2026-10-05 (source restoration and core integration fixes).
 | Asset registration / inventory | REQUIRED CORE | PARTIAL | API and dashboard page support registration/inventory. `DatabaseAssetOut` does not expose the password. |
 | Secure credentials | REQUIRED CORE | PARTIAL | Registration encrypts passwords through SecretProvider and the API never returns them. Password update/re-encryption and key rotation are not built. |
 | Connectors (SQLite, PostgreSQL) | REQUIRED CORE | PARTIAL | PostgreSQL database-size lookup is parameterized and connection attempts time out after 5 seconds. SQLite connector still accepts a server-side file path from administrators. |
-| Health monitoring | REQUIRED CORE | PARTIAL | Background loop; NEEDS TESTING against Postgres. |
+| Health monitoring | REQUIRED CORE | PARTIAL | Background loop. Fixed the broken risk-score import that marked healthy databases offline; verified with a real SQLite target (online, score stored). PostgreSQL NEEDS TESTING. |
 | Login monitoring / brute force | REQUIRED CORE | SIMULATED/PARTIAL | Records **active sessions** from `pg_stat_activity` as successful logins on every 60 s poll (duplicates). No source of **failed** logins (needs PG log parsing), so the brute-force rule can never fire from real telemetry. Alerts are not deduplicated. |
 | User / admin / privilege changes | REQUIRED CORE | PARTIAL | `pg_roles` snapshot diff. NEEDS TESTING. |
 | Query volume / mass reads / sensitive access / exports | REQUIRED CORE | PARTIAL | `pg_stat_user_tables` heuristics. NEEDS TESTING. |
 | Schema monitoring | REQUIRED CORE | PARTIAL | NEEDS TESTING. |
 | Backup monitoring | REQUIRED CORE | PARTIAL | Reads only Skylos' own `database_backups` table; nothing populates it. |
 | Out-of-hours, source anomalies, config changes, audit-log tampering, file integrity, maintenance windows | REQUIRED CORE / ENGINE-SPECIFIC | NOT STARTED | — |
-| Risk scoring | REQUIRED CORE | PARTIAL | Weights match spec. **Missing:** 10-minute window, 30-min/+40 category cap, dedup, correlation bonus, severity bands, maintenance exclusions, stored explanations. Score capped at 100 (spec has no cap). |
-| DB alerts / timeline / reporting | REQUIRED CORE | NOT STARTED / PARTIAL | Alerts exist without dedup; no timeline or reports. |
+| Risk scoring | REQUIRED CORE | PARTIAL (VERIFIED by tests and a real SQLite health-check run) | Implemented: all 14 weights, failed logins grouped into 10-minute bursts, duplicate prevention, +40/30 min category cap, +15 correlation, severity bands, per-asset maintenance windows (admin-configurable, audited), explanations with event references, stored snapshots (`database_risk_snapshots`, migration `0003`), `GET /risk-score` (explained) and `GET /risk-history`, UI explanation. **Limitations:** no approval workflow, so every admin/privilege/schema/export event counts as unapproved; `out_of_hours` and `unknown_ip` rules exist but no detector emits them; `db_new_user`, `db_privilege_change` and `db_high_query_volume` alerts carry no weight (not in the specification); PostgreSQL not tested; score is no longer capped at 100 (the specification defines no cap). | `database_guardian/risk_scorer.py`, `alert_generator.py`, `health_monitor.py`, `login_monitor.py`, `api_routes.py`, `models.py`, `schemas.py`, `migrations/versions/0003_*.py`, `frontend/src/pages/Databases.tsx` | `tests/test_database_risk.py` (103 tests), `tests/test_migrations.py` |
+| DB alerts / timeline / reporting | REQUIRED CORE | PARTIAL | Alerts are deduplicated and carry the right weight; the 10-minute login window now matches the specification. No timeline or reports. |
 
 ## Phase C — Agents
 
@@ -102,7 +112,7 @@ Last updated: 2026-10-05 (source restoration and core integration fixes).
 
 | Feature | Status | Notes |
 |---|---|---|
-| Build | PARTIAL | `npm ci` and `npm run build` succeeded with Node 22.22.1; pages are split into route chunks. Browser runtime still needs a live API session. | `frontend/package.json`, `frontend/package-lock.json` |
+| Build | PARTIAL | Re-verified 2026-10-09 after the Databases page change. `npm ci` and `npm run build` succeeded with Node 22.22.1; pages are split into route chunks. Browser runtime still needs a live API session. | `frontend/package.json`, `frontend/package-lock.json` |
 | Dependency audit | COMPLETE | `npm audit fix` updated compatible packages; `npm audit` reported zero vulnerabilities afterward. | `frontend/package-lock.json` |
 | Login | PARTIAL | Default credentials removed; a 401 from the login endpoint now stays on the form so the error is visible. Built successfully; live login flow not exercised. |
 | Real-time alerts | PARTIAL | WebSocket now authenticates with the stored JWT and stays connected across dashboard pages. Built successfully; live socket flow not exercised. |
@@ -110,11 +120,13 @@ Last updated: 2026-10-05 (source restoration and core integration fixes).
 | Incidents, user management, agent pages | NOT STARTED | — |
 
 ## Phase F — Desktop (Tauri): NOT STARTED (Rust not installed)
-## Phase G — Deployment / docs: `RUNNING_SKYLOS.md` NOT STARTED; backup/restore/upgrade docs NOT STARTED.
+## Phase G — Deployment / docs: `RUNNING_SKYLOS.md` PARTIAL (written 2026-10-09; local SQLite flow verified, Docker/PostgreSQL/Windows/Tauri parts marked unverified). Backup/restore commands documented, not exercised.
 
 ---
 
 ## Known pre-existing issues (not caused by this session)
 - `backend/venv` (Python 3.7, foreign path) is unusable. Left in place; use `backend/.venv`.
+- `backend/.venv310/` (Windows virtualenv scripts and headers) is **tracked in git**. `.gitignore` now ignores `.venv*/` for new files, but the tracked files need `git rm -r --cached backend/.venv310`, which was not run (it changes the index).
+- `/docs` (OpenAPI UI) is enabled in every mode.
 - Ad-hoc scripts in `backend/` (`init_test.py`, `test_basic.py`, `test_security*.py`, `verify_phase2.py`) and `debug_import.py` at the root are not part of the test suite. `verify_phase2.py` imports a name that does not exist (`credential_manager`).
 - `.claude/worktrees/` contains other worktrees, one with unrelated content. Not inspected or modified.
